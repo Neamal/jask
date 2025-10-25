@@ -1,0 +1,16 @@
+node_modules/
+.next/
+.env.local
+.env
+dist/
+*.log
+.DS_Store
+.vscode/
+.idea/
+
+# Database
+/packages/web/prisma/dev.db*
+
+# Generated files
+/packages/shared/dist/
+/packages/worker/dist/

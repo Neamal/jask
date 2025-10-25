@@ -1,0 +1,32 @@
+port: 7880
+bind_addresses:
+  - ""
+
+rtc:
+  tcp_port: 7881
+  port_range_start: 50000
+  port_range_end: 60000
+  use_external_ip: true
+
+redis:
+  address: redis:6379
+
+turn:
+  enabled: true
+  domain: localhost
+  tls_port: 5349
+  udp_port: 3478
+
+keys:
+  devkey: devsecret
+
+logging:
+  level: info
+  pion_level: warn
+
+room:
+  auto_create: true
+  enable_recording: false
+
+webhook:
+  api_key: livekit-api-key
