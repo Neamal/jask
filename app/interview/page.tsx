@@ -14,6 +14,8 @@ import { Track, RoomEvent, ConnectionState } from 'livekit-client'
 function InterviewRoom({ question }: { question: string }) {
   const [code, setCode] = useState('')
   const [debugLogs, setDebugLogs] = useState<string[]>([])
+  const [lastAnalyzedCode, setLastAnalyzedCode] = useState('')
+  const [helpHandlerRegistered, setHelpHandlerRegistered] = useState(false)
   const tracks = useTracks([Track.Source.Microphone])
   const { localParticipant } = useLocalParticipant()
   const room = useRoomContext()
@@ -91,20 +93,78 @@ function InterviewRoom({ question }: { question: string }) {
       room.off(RoomEvent.TrackSubscribed, handleTrackSubscribed)
       room.off(RoomEvent.DataReceived, handleDataReceived)
     }
-  }, [room, localParticipant])
+  }, [room, localParticipant, question])
 
-  // Debounced code analysis: detect when code stops changing for 10 seconds
+  // Register handler for "help-provided" signal from agent - separate effect
   useEffect(() => {
-    if (!code.trim()) return // Don't analyze empty code
+    // Only register if not already registered
+    if (helpHandlerRegistered) return
 
     const addLog = (msg: string) => {
       const timestamp = new Date().toLocaleTimeString()
       setDebugLogs(prev => [...prev, `[${timestamp}] ${msg}`].slice(-20))
     }
 
-    addLog(`Code changed, waiting 10s before analysis...`)
+    const handleHelpProvided = async (reader: any) => {
+      const analyzedCode = await reader.readAll()
+      addLog(`🔔 Agent provided help, resetting analysis timer`)
+      setLastAnalyzedCode(analyzedCode)
+    }
+    
+    try {
+      // Register the handler
+      room.registerTextStreamHandler('help-provided', handleHelpProvided)
+      setHelpHandlerRegistered(true)
+      addLog(`✅ Registered help-provided handler`)
+    } catch (error) {
+      // If already registered, just log it
+      console.log('Help handler already registered:', error)
+    }
+  }, [room, helpHandlerRegistered]) // Depend on both room and registration status
 
-    const timer = setTimeout(async () => {
+  // Send code updates to agent immediately (with short debounce to avoid spam)
+  // This is COMPLETELY INDEPENDENT - always syncs code to agent
+  useEffect(() => {
+    if (!code.trim()) return // Don't send empty code
+
+    const addLog = (msg: string) => {
+      const timestamp = new Date().toLocaleTimeString()
+      setDebugLogs(prev => [...prev, `[${timestamp}] ${msg}`].slice(-20))
+    }
+
+    // Short delay to avoid sending on every keystroke
+    const codeUpdateTimer = setTimeout(async () => {
+      try {
+        await localParticipant.sendText(code, {
+          topic: 'code-update',
+        })
+        addLog(`📤 Code synced to agent`)
+      } catch (error) {
+        addLog(`❌ Failed to send code: ${error}`)
+      }
+    }, 1000) // 1 second debounce for code updates
+
+    return () => clearTimeout(codeUpdateTimer)
+  }, [code, localParticipant])
+
+  // Debounced code analysis: ONLY runs if code has changed since last analysis
+  // Resets after agent provides help (when lastAnalyzedCode is updated)
+  useEffect(() => {
+    if (!code.trim()) return // Don't analyze empty code
+    
+    // Skip if code hasn't changed since last analysis
+    if (code === lastAnalyzedCode) {
+      return
+    }
+
+    const addLog = (msg: string) => {
+      const timestamp = new Date().toLocaleTimeString()
+      setDebugLogs(prev => [...prev, `[${timestamp}] ${msg}`].slice(-20))
+    }
+
+    addLog(`Code changed since last analysis, will analyze in 10s...`)
+
+    const analysisTimer = setTimeout(async () => {
       addLog(`⚙️ Analyzing code with Claude...`)
 
       try {
@@ -126,6 +186,9 @@ function InterviewRoom({ question }: { question: string }) {
         addLog(`📋 Result: ${data.analysis.substring(0, 100)}...`)
         console.log('Full analysis:', data.analysis)
 
+        // Mark this code as analyzed
+        setLastAnalyzedCode(code)
+
         // Send analysis to agent via custom text stream topic
         const agentParticipant = Array.from(room.remoteParticipants.values()).find(
           p => p.identity.startsWith('agent-')
@@ -143,10 +206,10 @@ function InterviewRoom({ question }: { question: string }) {
       } catch (error) {
         addLog(`❌ Analysis failed: ${error}`)
       }
-    }, 10000)
+    }, 10000) // 10 second delay for full analysis
 
-    return () => clearTimeout(timer)
-  }, [code, question])
+    return () => clearTimeout(analysisTimer)
+  }, [code, question, lastAnalyzedCode, localParticipant, room])
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
