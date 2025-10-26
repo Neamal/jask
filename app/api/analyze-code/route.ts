@@ -41,7 +41,7 @@ Analyze this code carefully. ONLY provide feedback if you find:
 
 If the code is generally on the right track, even if incomplete or could be optimized, return ONLY the word "PASS" with no other text.
 
-If there ARE issues worth mentioning, provide a brief, constructive comment that an interviewer would naturally say (1-2 sentences max). Be sparing with feedback - we want to interject only when truly necessary.`,
+If there ARE issues worth mentioning, provide a brief, constructive comment that an interviewer would naturally say (1-2 sentences max). Be sparing with feedback - we want to interject only when truly necessary. Additionally, since this is going to be verbally communicated to the user, make sure the sentences are completely disambiguous from audio alone, don't depend on someone being able to read the sentence.`,
         },
       ],
     })
