@@ -34,13 +34,14 @@ The code they have written so far:
 ${code}
 \`\`\`
 
-Analyze this code and provide:
-1. Whether the approach is correct or heading in the right direction
-2. Any logical errors or bugs you spot
-3. Any syntax errors
-4. Suggestions for improvement (without giving away the full solution)
+Analyze this code carefully. ONLY provide feedback if you find:
+- Significant logical errors or bugs
+- Critical syntax errors that would prevent the code from running
+- The approach is heading in a fundamentally wrong direction
 
-Keep your response concise and constructive, as it will be relayed to the candidate by an AI interviewer. Format your response as a brief assessment that an interviewer would naturally say.`,
+If the code is generally on the right track, even if incomplete or could be optimized, return ONLY the word "PASS" with no other text.
+
+If there ARE issues worth mentioning, provide a brief, constructive comment that an interviewer would naturally say (1-2 sentences max). Be sparing with feedback - we want to interject only when truly necessary.`,
         },
       ],
     })
@@ -52,6 +53,7 @@ Keep your response concise and constructive, as it will be relayed to the candid
 
     return NextResponse.json({
       analysis,
+      shouldNotify: analysis.trim() !== 'PASS',
       codeLength: code.length,
     })
   } catch (error) {

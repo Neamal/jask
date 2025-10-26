@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(npm run dev:*)",
-      "Bash(npm install)"
+      "Bash(npm install)",
+      "Bash(lk agent logs:*)",
+      "Bash(1 --tail 50)"
     ],
     "deny": [],
     "ask": []

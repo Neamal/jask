@@ -8,7 +8,7 @@ from livekit.agents import AgentSession, Agent, RoomInputOptions
 from livekit.plugins import noise_cancellation, silero
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
-load_dotenv(".env.local")
+load_dotenv("../.env.local")
 
 
 class Assistant(Agent):
@@ -29,6 +29,8 @@ class Assistant(Agent):
                 - "Is my approach correct?"
                 
                 Don't forget to greet the interviewee and provide a brief overview of how the interview will proceed. Then ask about the interviewee and their background.
+
+                IMPORTANT: When you receive a message starting with "[AUTOMATED CODE ANALYSIS]", you must IMMEDIATELY relay the feedback that follows to the candidate verbatim, without adding any introduction, greeting, or extra commentary. Just say the analysis directly.
                 """,
         )
         self.problem_statement_received = False
@@ -196,6 +198,8 @@ class Assistant(Agent):
 
 
 async def entrypoint(ctx: agents.JobContext):
+    import asyncio
+
     assistant = Assistant()
 
     print(f"🤖 Agent starting in room: {ctx.room.name}")
@@ -207,6 +211,43 @@ async def entrypoint(ctx: agents.JobContext):
         vad=silero.VAD.load(),
         turn_detection=MultilingualModel(),
     )
+
+    # Register handler for lk.chat text stream (problem statement)
+    def handle_chat_message(reader, participant_identity: str):
+        async def process():
+            text = await reader.read_all()
+            print(f"📨 Received chat message from {participant_identity}: {text[:100]}...")
+
+            # If this is the problem statement, add it to context
+            if text.startswith("IMPORTANT: The user is working on this specific problem:") and not assistant.problem_statement_received:
+                print(f"✅ Detected problem statement")
+                assistant.problem_statement_received = True
+                # Add problem statement to context
+                session.interrupt()
+                await session.generate_reply(user_input=text)
+
+        # Schedule the coroutine to run
+        asyncio.ensure_future(process())
+
+    # Register handler for code-analysis text stream
+    def handle_code_analysis(reader, participant_identity: str):
+        async def process():
+            analysis = await reader.read_all()
+            print(f"🔍 Received code analysis from {participant_identity}: {analysis[:100]}...")
+
+            # Interrupt current speech and say the analysis
+            session.interrupt()
+
+            # Use say() to speak the analysis directly without LLM processing
+            await session.say(analysis)
+            print(f"✅ Code analysis spoken to user")
+
+        # Schedule the coroutine to run
+        asyncio.ensure_future(process())
+
+    ctx.room.register_text_stream_handler("lk.chat", handle_chat_message)
+    ctx.room.register_text_stream_handler("code-analysis", handle_code_analysis)
+    print(f"✅ Text stream handlers registered")
 
     await session.start(
         room=ctx.room,

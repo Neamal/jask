@@ -183,30 +183,35 @@ function InterviewRoom({ question }: { question: string }) {
 
         const data = await response.json()
         addLog(`✅ Analysis complete`)
-        addLog(`📋 Result: ${data.analysis.substring(0, 100)}...`)
-        console.log('Full analysis:', data.analysis)
+
+        if (data.shouldNotify) {
+          addLog(`⚠️ Issues found: ${data.analysis.substring(0, 100)}...`)
+          console.log('Full analysis:', data.analysis)
 
         // Mark this code as analyzed
         setLastAnalyzedCode(code)
 
-        // Send analysis to agent via custom text stream topic
-        const agentParticipant = Array.from(room.remoteParticipants.values()).find(
-          p => p.identity.startsWith('agent-')
-        )
+          // Send analysis to agent via custom text stream topic
+          const agentParticipant = Array.from(room.remoteParticipants.values()).find(
+            p => p.identity.startsWith('agent-')
+          )
 
-        if (agentParticipant) {
-          addLog(`📤 Sending analysis to agent...`)
-          await localParticipant.sendText(data.analysis, {
-            topic: 'code-analysis',
-          })
-          addLog(`✅ Analysis sent to agent`)
+          if (agentParticipant) {
+            addLog(`📤 Sending analysis to agent...`)
+            await localParticipant.sendText(data.analysis, {
+              topic: 'code-analysis',
+            })
+            addLog(`✅ Analysis sent to agent`)
+          } else {
+            addLog(`⚠️ No agent connected`)
+          }
         } else {
-          addLog(`⚠️ No agent connected`)
+          addLog(`✅ Code looks good, no feedback needed`)
         }
       } catch (error) {
         addLog(`❌ Analysis failed: ${error}`)
       }
-    }, 10000) // 10 second delay for full analysis
+    }, 5000)
 
     return () => clearTimeout(analysisTimer)
   }, [code, question, lastAnalyzedCode, localParticipant, room])
