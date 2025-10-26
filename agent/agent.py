@@ -52,6 +52,7 @@ class Assistant(Agent):
             r"(any )?feedback",
             r"stuck",
             r"not sure (how|what)",
+            r"have no (clue|idea)"
         ]
         
         user_lower = user_input.lower()
