@@ -93,6 +93,61 @@ function InterviewRoom({ question }: { question: string }) {
     }
   }, [room, localParticipant])
 
+  // Debounced code analysis: detect when code stops changing for 10 seconds
+  useEffect(() => {
+    if (!code.trim()) return // Don't analyze empty code
+
+    const addLog = (msg: string) => {
+      const timestamp = new Date().toLocaleTimeString()
+      setDebugLogs(prev => [...prev, `[${timestamp}] ${msg}`].slice(-20))
+    }
+
+    addLog(`Code changed, waiting 10s before analysis...`)
+
+    const timer = setTimeout(async () => {
+      addLog(`⚙️ Analyzing code with Claude...`)
+
+      try {
+        const response = await fetch('/api/analyze-code', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            code,
+            question,
+          }),
+        })
+
+        if (!response.ok) {
+          throw new Error(`API error: ${response.status}`)
+        }
+
+        const data = await response.json()
+        addLog(`✅ Analysis complete`)
+        addLog(`📋 Result: ${data.analysis.substring(0, 100)}...`)
+        console.log('Full analysis:', data.analysis)
+
+        // Send analysis to agent via custom text stream topic
+        const agentParticipant = Array.from(room.remoteParticipants.values()).find(
+          p => p.identity.startsWith('agent-')
+        )
+
+        if (agentParticipant) {
+          addLog(`📤 Sending analysis to agent...`)
+          await localParticipant.sendText(data.analysis, {
+            topic: 'code-analysis',
+          })
+          addLog(`✅ Analysis sent to agent`)
+        } else {
+          addLog(`⚠️ No agent connected`)
+        }
+      } catch (error) {
+        addLog(`❌ Analysis failed: ${error}`)
+      }
+    }, 10000)
+
+    return () => clearTimeout(timer)
+  }, [code, question])
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <RoomAudioRenderer />
