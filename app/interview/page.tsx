@@ -28,12 +28,45 @@ function InterviewRoom({ question }: { question: string }) {
     addLog(`Local participant: ${localParticipant.identity}`)
     addLog(`Microphone enabled: ${localParticipant.isMicrophoneEnabled}`)
 
+    // Send problem statement to any agents already in the room
+    const sendProblemStatementToAgent = async (participantIdentity: string) => {
+      try {
+        // Wait a bit to ensure agent has registered its text stream handler
+        addLog(`Waiting for agent to be ready...`)
+        await new Promise(resolve => setTimeout(resolve, 10000))
+
+        addLog(`Sending problem statement to ${participantIdentity}...`)
+        const streamInfo = await localParticipant.sendText(
+          `IMPORTANT: The user is working on this specific problem: ${question}. Always refer to THIS problem when discussing their code or approach. Do not make up a different problem.`,
+          {
+            topic: 'lk.chat',
+          }
+        )
+        addLog(`✅ Problem statement sent via lk.chat (stream ID: ${streamInfo.id})`)
+      } catch (error) {
+        addLog(`❌ Failed to send problem statement: ${error}`)
+      }
+    }
+
+    // Check for existing agent participants
+    Array.from(room.remoteParticipants.values()).forEach((participant) => {
+      if (participant.identity.startsWith('agent-')) {
+        addLog(`Found existing agent: ${participant.identity}`)
+        sendProblemStatementToAgent(participant.identity)
+      }
+    })
+
     const handleConnectionStateChange = (state: ConnectionState) => {
       addLog(`Connection state changed: ${state}`)
     }
 
-    const handleParticipantConnected = (participant: any) => {
+    const handleParticipantConnected = async (participant: any) => {
       addLog(`Participant connected: ${participant.identity}`)
+
+      // Send problem statement to agent when it joins
+      if (participant.identity !== localParticipant.identity && participant.identity.startsWith('agent-')) {
+        await sendProblemStatementToAgent(participant.identity)
+      }
     }
 
     const handleParticipantDisconnected = (participant: any) => {
