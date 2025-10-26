@@ -156,31 +156,43 @@ class Assistant(Agent):
             # Trigger code analysis
             analysis = await self.trigger_code_analysis()
             
-            if analysis:
-                # Add analysis to chat context
-                if self.agent_session:
-                    chat_ctx = self.agent_session.chat_ctx.copy()
-                    chat_ctx.add_message(
-                        role="system",
-                        content=f"CODE ANALYSIS RESULT:\n{analysis}\n\nProvide this feedback to the candidate in a helpful, conversational way."
-                    )
-                    await self.update_chat_ctx(chat_ctx)
-                    print(f"✅ Analysis added to chat context, agent will respond")
-                    
-                    # Send signal to frontend that help was provided
-                    # This will reset the 10-second analysis timer
-                    try:
-                        room = self.agent_session._room if hasattr(self.agent_session, '_room') else None
-                        if room:
-                            await room.local_participant.send_text(
-                                self.current_code,  # Send the code that was just analyzed
-                                topic="help-provided"
-                            )
-                            print(f"📤 Sent 'help-provided' signal to frontend")
-                    except Exception as e:
-                        print(f"⚠️ Failed to send help-provided signal: {e}")
+            if analysis and self.agent_session:
+                print(f"✅ Analysis received, preparing to speak feedback")
+                
+                # Add analysis to chat context as system message
+                chat_ctx = self.agent_session.chat_ctx.copy()
+                chat_ctx.add_message(
+                    role="system",
+                    content=f"CODE ANALYSIS RESULT:\n{analysis}\n\nYou must provide this feedback to the candidate in a helpful, conversational way. Explain what they're doing right and what needs improvement."
+                )
+                await self.update_chat_ctx(chat_ctx)
+                
+                # Generate and speak the response based on the analysis
+                await self.agent_session.generate_reply(
+                    instructions=f"Based on this code analysis, provide helpful feedback to the candidate: {analysis}"
+                )
+                
+                print(f"✅ Agent is now speaking the code feedback")
+                
+                # Send signal to frontend that help was provided
+                # This will reset the 10-second analysis timer
+                try:
+                    room = self.agent_session._room if hasattr(self.agent_session, '_room') else None
+                    if room:
+                        await room.local_participant.send_text(
+                            self.current_code,  # Send the code that was just analyzed
+                            topic="help-provided"
+                        )
+                        print(f"📤 Sent 'help-provided' signal to frontend")
+                except Exception as e:
+                    print(f"⚠️ Failed to send help-provided signal: {e}")
             else:
-                print(f"⚠️ Analysis failed, agent will respond without it")
+                print(f"⚠️ Analysis failed or no agent session, agent will respond without analysis")
+                # Let the agent respond naturally without the analysis
+                if self.agent_session:
+                    await self.agent_session.generate_reply(
+                        instructions="The candidate asked for help but the code analysis failed. Apologize and ask them to describe what they're working on verbally."
+                    )
 
 
 async def entrypoint(ctx: agents.JobContext):
