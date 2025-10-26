@@ -5,7 +5,7 @@ from livekit.agents import AgentSession, Agent, RoomInputOptions
 from livekit.plugins import noise_cancellation, silero
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
-load_dotenv(".env.local")
+load_dotenv("../.env.local")
 
 
 class Assistant(Agent):
@@ -20,35 +20,56 @@ class Assistant(Agent):
         )
         self.problem_statement_received = False
 
-    async def on_enter(self, ctx):
-        """Hook called when agent enters - use to set up text stream handler"""
-        print(f"🎯 Agent entered, setting up problem statement listener")
-
-        # Register handler for lk.chat text stream
-        async def handle_chat_message(reader, participant_identity: str):
-            text = await reader.read_all()
-            print(f"📨 Received text from {participant_identity}: {text[:100]}...")
-
-            # If this is the problem statement, inject it into chat context
-            if text.startswith("IMPORTANT: The user is working on this specific problem:") and not self.problem_statement_received:
-                print(f"✅ Detected problem statement, injecting into chat context")
-                self.problem_statement_received = True
-
-                # Get the current chat context and add the problem statement
-                chat_ctx = ctx.agent_session.chat_ctx.copy()
-                chat_ctx.add_message(role="system", content=text)
-
-                # Update the chat context permanently
-                await self.update_chat_ctx(chat_ctx)
-                print(f"✅ Problem statement persisted to chat context")
-
-        ctx.room.register_text_stream_handler("lk.chat", handle_chat_message)
 
 
 async def entrypoint(ctx: agents.JobContext):
     assistant = Assistant()
 
     print(f"🤖 Agent starting in room: {ctx.room.name}")
+
+    # Register handler for lk.chat text stream (problem statement)
+    def handle_chat_message(reader, participant_identity: str):
+        import asyncio
+
+        async def process():
+            text = await reader.read_all()
+            print(f"📨 Received chat message from {participant_identity}: {text[:100]}...")
+
+            # If this is the problem statement, inject it into chat context
+            if text.startswith("IMPORTANT: The user is working on this specific problem:") and not assistant.problem_statement_received:
+                print(f"✅ Detected problem statement, injecting into chat context")
+                assistant.problem_statement_received = True
+
+                # Get the current chat context and add the problem statement
+                chat_ctx = session.chat_ctx.copy()
+                chat_ctx.add_message(role="system", content=text)
+
+                # Update the chat context permanently
+                await assistant.update_chat_ctx(chat_ctx)
+                print(f"✅ Problem statement persisted to chat context")
+
+        asyncio.create_task(process())
+
+    # Register handler for code-analysis text stream
+    def handle_code_analysis(reader, participant_identity: str):
+        import asyncio
+
+        async def process():
+            analysis = await reader.read_all()
+            print(f"🔍 Received code analysis from {participant_identity}: {analysis[:100]}...")
+
+            # Interrupt and relay the analysis as if it's user input for the agent to respond to
+            session.interrupt()
+            await session.generate_reply(
+                user_input=f"[AUTOMATED CODE ANALYSIS] {analysis}"
+            )
+            print(f"✅ Code analysis relayed to user")
+
+        asyncio.create_task(process())
+
+    ctx.room.register_text_stream_handler("lk.chat", handle_chat_message)
+    ctx.room.register_text_stream_handler("code-analysis", handle_code_analysis)
+    print(f"✅ Text stream handlers registered")
 
     session = AgentSession(
         stt="assemblyai/universal-streaming:en",
