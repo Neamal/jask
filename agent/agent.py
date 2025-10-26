@@ -1,6 +1,6 @@
 from dotenv import load_dotenv
 
-from livekit import agents
+from livekit import agents, rtc
 from livekit.agents import AgentSession, Agent, RoomInputOptions
 from livekit.plugins import noise_cancellation, silero
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
@@ -19,9 +19,30 @@ class Assistant(Agent):
                 Don't forget to greet the interviewee and provide a brief overview of how the interview will proceed. Then ask about the interviewee and their background.
                 """,
         )
+        self.problem_statement = None
 
 
 async def entrypoint(ctx: agents.JobContext):
+    assistant = Assistant()
+
+    print(f"🤖 Agent starting in room: {ctx.room.name}")
+
+    # Handler for receiving problem statement via text stream
+    async def handle_problem_statement(reader: rtc.TextStreamReader, participant_identity: str):
+        """Receive the problem statement from the client"""
+        print(f"📨 Text stream received from {participant_identity}")
+        print(f"   Topic: {reader.info.topic}")
+        print(f"   Stream ID: {reader.info.id}")
+
+        text = await reader.read_all()
+        assistant.problem_statement = text
+        print(f"✅ Problem statement received ({len(text)} chars): {text}")
+
+    # Register text stream handler
+    print(f"📝 Registering text stream handler for 'problem-statement'...")
+    ctx.room.register_text_stream_handler("problem-statement", handle_problem_statement)
+    print(f"✅ Text stream handler registered")
+
     session = AgentSession(
         stt="assemblyai/universal-streaming:en",
         llm="openai/gpt-4.1-mini",
@@ -32,16 +53,20 @@ async def entrypoint(ctx: agents.JobContext):
 
     await session.start(
         room=ctx.room,
-        agent=Assistant(),
+        agent=assistant,
         room_input_options=RoomInputOptions(
             # For telephony applications, use `BVCTelephony` instead for best results
             noise_cancellation=noise_cancellation.BVC(),
         ),
     )
 
-    await session.generate_reply(
-        instructions="Greet the user and offer your assistance."
-    )
+    # Generate greeting with problem context if available
+    if assistant.problem_statement:
+        greeting = f"Greet the user and let them know you'll be helping them with the following problem: {assistant.problem_statement}"
+    else:
+        greeting = "Greet the user and offer your assistance."
+
+    await session.generate_reply(instructions=greeting)
 
 
 if __name__ == "__main__":
