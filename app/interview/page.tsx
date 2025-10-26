@@ -31,10 +31,6 @@ function InterviewRoom({ question }: { question: string }) {
     // Send problem statement to any agents already in the room
     const sendProblemStatementToAgent = async (participantIdentity: string) => {
       try {
-        // Wait a bit to ensure agent has registered its text stream handler
-        addLog(`Waiting for agent to be ready...`)
-        await new Promise(resolve => setTimeout(resolve, 10000))
-
         addLog(`Sending problem statement to ${participantIdentity}...`)
         const streamInfo = await localParticipant.sendText(
           `IMPORTANT: The user is working on this specific problem: ${question}. Always refer to THIS problem when discussing their code or approach. Do not make up a different problem.`,
