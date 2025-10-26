@@ -16,6 +16,8 @@ class Assistant(Agent):
                 interviewee works through technical problems. You are able to receive an analysis of the code the user has developed every now and then, and determine if the user is going in the right direction.
                 The goal is to help the interviewee approach the solution on their own with little guidance, however do not instantly give away the core logic and solution.
                 Don't forget to greet the interviewee and provide a brief overview of how the interview will proceed. Then ask about the interviewee and their background.
+
+                IMPORTANT: When you receive a message starting with "[AUTOMATED CODE ANALYSIS]", you must IMMEDIATELY relay the feedback that follows to the candidate verbatim, without adding any introduction, greeting, or extra commentary. Just say the analysis directly.
                 """,
         )
         self.problem_statement_received = False
@@ -23,53 +25,11 @@ class Assistant(Agent):
 
 
 async def entrypoint(ctx: agents.JobContext):
+    import asyncio
+
     assistant = Assistant()
 
     print(f"🤖 Agent starting in room: {ctx.room.name}")
-
-    # Register handler for lk.chat text stream (problem statement)
-    def handle_chat_message(reader, participant_identity: str):
-        import asyncio
-
-        async def process():
-            text = await reader.read_all()
-            print(f"📨 Received chat message from {participant_identity}: {text[:100]}...")
-
-            # If this is the problem statement, inject it into chat context
-            if text.startswith("IMPORTANT: The user is working on this specific problem:") and not assistant.problem_statement_received:
-                print(f"✅ Detected problem statement, injecting into chat context")
-                assistant.problem_statement_received = True
-
-                # Get the current chat context and add the problem statement
-                chat_ctx = session.chat_ctx.copy()
-                chat_ctx.add_message(role="system", content=text)
-
-                # Update the chat context permanently
-                await assistant.update_chat_ctx(chat_ctx)
-                print(f"✅ Problem statement persisted to chat context")
-
-        asyncio.create_task(process())
-
-    # Register handler for code-analysis text stream
-    def handle_code_analysis(reader, participant_identity: str):
-        import asyncio
-
-        async def process():
-            analysis = await reader.read_all()
-            print(f"🔍 Received code analysis from {participant_identity}: {analysis[:100]}...")
-
-            # Interrupt and relay the analysis as if it's user input for the agent to respond to
-            session.interrupt()
-            await session.generate_reply(
-                user_input=f"[AUTOMATED CODE ANALYSIS] {analysis}"
-            )
-            print(f"✅ Code analysis relayed to user")
-
-        asyncio.create_task(process())
-
-    ctx.room.register_text_stream_handler("lk.chat", handle_chat_message)
-    ctx.room.register_text_stream_handler("code-analysis", handle_code_analysis)
-    print(f"✅ Text stream handlers registered")
 
     session = AgentSession(
         stt="assemblyai/universal-streaming:en",
@@ -78,6 +38,43 @@ async def entrypoint(ctx: agents.JobContext):
         vad=silero.VAD.load(),
         turn_detection=MultilingualModel(),
     )
+
+    # Register handler for lk.chat text stream (problem statement)
+    def handle_chat_message(reader, participant_identity: str):
+        async def process():
+            text = await reader.read_all()
+            print(f"📨 Received chat message from {participant_identity}: {text[:100]}...")
+
+            # If this is the problem statement, add it to context
+            if text.startswith("IMPORTANT: The user is working on this specific problem:") and not assistant.problem_statement_received:
+                print(f"✅ Detected problem statement")
+                assistant.problem_statement_received = True
+                # Add problem statement to context
+                session.interrupt()
+                await session.generate_reply(user_input=text)
+
+        # Schedule the coroutine to run
+        asyncio.ensure_future(process())
+
+    # Register handler for code-analysis text stream
+    def handle_code_analysis(reader, participant_identity: str):
+        async def process():
+            analysis = await reader.read_all()
+            print(f"🔍 Received code analysis from {participant_identity}: {analysis[:100]}...")
+
+            # Interrupt current speech and say the analysis
+            session.interrupt()
+
+            # Use say() to speak the analysis directly without LLM processing
+            await session.say(analysis)
+            print(f"✅ Code analysis spoken to user")
+
+        # Schedule the coroutine to run
+        asyncio.ensure_future(process())
+
+    ctx.room.register_text_stream_handler("lk.chat", handle_chat_message)
+    ctx.room.register_text_stream_handler("code-analysis", handle_code_analysis)
+    print(f"✅ Text stream handlers registered")
 
     await session.start(
         room=ctx.room,
