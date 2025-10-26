@@ -11,7 +11,7 @@ A simple mock interview application that uses LiveKit for real-time voice conver
 
 ## Setup
 
-### 1. Install Dependencies
+### 1. Install Web App Dependencies
 
 ```bash
 npm install
@@ -36,10 +36,40 @@ LIVEKIT_API_SECRET=your_api_secret_here
 NEXT_PUBLIC_LIVEKIT_URL=wss://your-project.livekit.cloud
 ```
 
-### 3. Run the App
+### 3. Set Up the AI Agent (Python)
 
+The AI interviewer runs as a separate Python service:
+
+1. **Install Python dependencies** (requires Python 3.11+):
+   ```bash
+   cd agent
+   pip install -e .
+   ```
+
+2. **Configure API keys** in `agent/.env.local`:
+   ```env
+   # Already has LiveKit credentials
+   ASSEMBLYAI_API_KEY=your_assemblyai_key_here
+   OPENAI_API_KEY=your_openai_key_here
+   CARTESIA_API_KEY=your_cartesia_key_here
+   ```
+
+3. **Get API keys**:
+   - [AssemblyAI](https://www.assemblyai.com/) - Speech-to-text
+   - [OpenAI](https://platform.openai.com/) - GPT-4 mini for conversation
+   - [Cartesia](https://cartesia.ai/) - Text-to-speech
+
+### 4. Run the Application
+
+**Terminal 1 - Web App:**
 ```bash
 npm run dev
+```
+
+**Terminal 2 - AI Agent:**
+```bash
+cd agent
+python agent.py dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
@@ -75,19 +105,26 @@ jask/
 │   ├── globals.css
 │   ├── layout.tsx
 │   └── page.tsx              # Landing page
+├── agent/
+│   ├── agent.py              # LiveKit AI agent
+│   ├── pyproject.toml        # Python dependencies
+│   └── .env.local            # Agent API keys
 ├── .env.example
+├── .env.local
 ├── package.json
 └── README.md
 ```
 
-## Next Steps
+## How the Agent Works
 
-To add AI interviewer functionality, you can:
-
-1. Set up a LiveKit Agent using the [LiveKit Agents framework](https://docs.livekit.io/agents/)
-2. Implement speech-to-text and text-to-speech
-3. Connect an LLM (like Claude or GPT) to process the conversation
-4. Have the agent join the room automatically when a user starts an interview
+The AI interviewer (JASK) automatically joins interview rooms and:
+- Greets the candidate and asks about their background
+- Listens to the candidate's voice explanations
+- Provides guidance and hints without giving away the solution
+- Evaluates problem-solving skills and technical communication
+- Uses AssemblyAI for speech recognition
+- Uses OpenAI GPT-4 for intelligent responses
+- Uses Cartesia for natural-sounding voice output
 
 ## License
 
